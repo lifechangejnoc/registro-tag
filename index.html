@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E8175">
+<title>Registro Tag NFC</title>
+
+<!-- ===================================================================
+     ▼▼▼  UNICA COSA DA MODIFICARE  ▼▼▼
+     Incolla qui i due valori che trovi su Supabase in
+     Project Settings → API  (Project URL e chiave "anon public").
+     =================================================================== -->
+<script>
+  window.CONFIG = {
+    SUPABASE_URL:      "https://vudjxbujowjkyzmtmxeq.supabase.co",
+    SUPABASE_ANON_KEY: "sb_publishable_qVU4jlyVRYOoV-feqOlT2w_wJe5QlLK"
+  };
+</script>
+<!-- ▲▲▲  FINE PARTE DA MODIFICARE  ▲▲▲ -->
+
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --bg:#EFF2F1; --surface:#FFFFFF; --surface-2:#F7F9F8;
+  --ink:#141D1B; --muted:#5B6A67; --faint:#8A9895;
+  --line:#DBE2E0; --line-strong:#C3CECB;
+  --accent:#0E8175; --accent-wash:#DCEFEC;
+  --ok:#2C7A54; --ok-wash:#DCEFE4;
+  --warn:#9C6407; --warn-wash:#F6EBD5;
+  --bad:#A93A2C; --bad-wash:#F6DFDB;
+  --info:#3A5FA8; --info-wash:#E0E7F5;
+  --shadow:0 1px 2px rgba(20,29,27,.06), 0 8px 24px -14px rgba(20,29,27,.25);
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0E1413; --surface:#161E1C; --surface-2:#1B2422;
+    --ink:#E7EDEB; --muted:#9AA9A6; --faint:#75837F;
+    --line:#27312F; --line-strong:#36423F;
+    --accent:#3FBFAE; --accent-wash:#16302C;
+    --ok:#5FC58C; --ok-wash:#15301F;
+    --warn:#E0A64A; --warn-wash:#332512;
+    --bad:#E4796A; --bad-wash:#331B18;
+    --info:#8FAEEA; --info-wash:#182338;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+img{max-width:100%}
+h1,h2,h3{font-family:"Bricolage Grotesque","Public Sans",sans-serif;margin:0;font-weight:700;letter-spacing:-.015em;text-wrap:balance}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.tnum{font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+[hidden]{display:none !important}
+
+/* ---------- login ---------- */
+.gate{min-height:100dvh;display:grid;place-items:center;padding:24px}
+.gatecard{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);
+  border-radius:14px;padding:26px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
+.gatecard h1{font-size:23px}
+.gatecard .sub{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.msg{font-size:13.5px;padding:9px 12px;border-radius:8px}
+.msg.err{background:var(--bad-wash);color:var(--bad)}
+.msg.ok{background:var(--ok-wash);color:var(--ok)}
+.linkbtn{background:none;border:0;color:var(--accent);cursor:pointer;font-size:13px;padding:0;text-align:left;text-decoration:underline}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 80px}
+header.top{position:sticky;top:0;z-index:600;background:var(--bg);border-bottom:1px solid var(--line)}
+.topin{max-width:1180px;margin:0 auto;padding:12px 16px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:auto}
+.brand h1{font-size:19px}
+.brand .sub{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.tabs{display:flex;gap:2px;width:100%;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;color:var(--muted);
+  cursor:pointer;font-weight:500;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.who{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);
+  border-radius:999px;padding:4px 12px 4px 4px;box-shadow:var(--shadow);font-weight:600;font-size:14px}
+.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;
+  font-size:12px;font-weight:700;color:#fff;font-family:"IBM Plex Mono",monospace}
+.btn{background:var(--accent);color:#fff;border:1px solid transparent;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.06)}
+.btn:disabled{opacity:.5;cursor:default;filter:none}
+.btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}
+.btn.ghost:hover{background:var(--surface-2);filter:none}
+.btn.danger{background:none;color:var(--bad);border-color:var(--line-strong)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn.block{width:100%}
+
+/* ---------- strip ---------- */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:20px 0 16px}
+.cell{background:var(--surface);padding:12px 14px 13px;display:flex;flex-direction:column;gap:2px}
+.cell .k{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.cell .v{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1.15}
+.cell .n{font-size:12px;color:var(--muted)}
+.cell.alert .v{color:var(--warn)}
+
+/* ---------- toolbar + lista ---------- */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.field{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.search{flex:1 1 200px;min-width:160px}
+select.field{cursor:pointer}
+.rows{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;cursor:pointer;text-align:left;width:100%;font:inherit;color:inherit}
+.row:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.row .stripe{width:4px;align-self:stretch;border-radius:99px;background:var(--line-strong)}
+.row.s-prova .stripe{background:var(--warn)}
+.row.s-venduta .stripe{background:var(--ok)}
+.row.s-restituita .stripe{background:var(--bad)}
+.row.s-ricontattare .stripe{background:var(--info)}
+.row .name{font-weight:600;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.row .meta{font-size:12.5px;color:var(--muted);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
+.row .right{display:flex;flex-direction:column;gap:3px;align-items:flex-end;text-align:right}
+.row .amt{font-weight:600;font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.p-prova{background:var(--warn-wash);color:var(--warn)}
+.p-venduta{background:var(--ok-wash);color:var(--ok)}
+.p-restituita{background:var(--bad-wash);color:var(--bad)}
+.p-ricontattare{background:var(--info-wash);color:var(--info)}
+.p-scaduta{background:var(--bad-wash);color:var(--bad)}
+.p-oggi{background:var(--warn-wash);color:var(--warn)}
+.p-nopay{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.dot{width:17px;height:17px;border-radius:50%;display:inline-grid;place-items:center;font-size:9px;
+  font-weight:700;color:#fff;font-family:"IBM Plex Mono",monospace}
+.empty{border:1px dashed var(--line-strong);border-radius:var(--r);padding:32px 20px;text-align:center;color:var(--muted);background:var(--surface)}
+.empty h3{font-size:17px;color:var(--ink);margin-bottom:6px}
+.note{font-size:12.5px;color:var(--muted)}
+
+/* ---------- mappa ---------- */
+.mapcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.maphead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-left:auto}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.lg{width:9px;height:9px;border-radius:50%;display:inline-block}
+#map{height:min(70vh,560px);width:100%;background:var(--surface-2);z-index:1}
+.nopos{padding:11px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.pin{border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.leaflet-popup-content{font-family:"Public Sans",sans-serif}
+
+/* ---------- team ---------- */
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card h3{font-size:16px;display:flex;align-items:center;gap:9px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ---------- scheda ---------- */
+.scrim{position:fixed;inset:0;background:rgba(10,16,15,.5);z-index:1000;display:grid;place-items:end center}
+.sheet{background:var(--surface);width:100%;max-width:720px;max-height:94dvh;overflow:auto;
+  border-radius:14px 14px 0 0;border:1px solid var(--line);box-shadow:var(--shadow)}
+@media(min-width:720px){.scrim{place-items:center}.sheet{border-radius:14px;max-height:88vh}}
+.sheethead{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:14px 16px;display:flex;align-items:center;gap:10px;z-index:2}
+.sheethead h2{font-size:18px;margin-right:auto}
+.sheetbody{padding:16px;display:flex;flex-direction:column;gap:16px}
+.fset{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+label.lab{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600}
+label.lab > input,label.lab > select,label.lab > textarea{
+  font-size:16px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:400;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
+label.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.sect{border-top:1px solid var(--line);padding-top:14px}
+.sect > h3{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:10px;
+  font-family:"Public Sans",sans-serif;font-weight:700}
+.hist{display:flex;flex-direction:column;gap:8px;max-height:190px;overflow:auto}
+.hitem{font-size:13.5px;border-left:2px solid var(--line-strong);padding-left:10px}
+.hitem .hm{font-size:11px;color:var(--faint);font-family:"IBM Plex Mono",monospace}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spacer{margin-left:auto}
+.warnbar{background:var(--warn-wash);color:var(--warn);font-size:13px;padding:9px 12px;border-radius:8px;margin-top:14px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:99px;font-size:14px;z-index:2000;box-shadow:var(--shadow);max-width:90vw}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}}
+@keyframes up{from{transform:translateY(14px);opacity:.5}to{transform:none;opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div class="gate" id="gate">
+  <form class="gatecard" id="loginForm">
+    <div>
+      <div class="sub">Roma</div>
+      <h1>Registro Tag NFC</h1>
+    </div>
+    <div class="msg err" id="gateMsg" hidden></div>
+    <label class="lab">Email
+      <input type="email" id="email" autocomplete="username" required>
+    </label>
+    <label class="lab">Password
+      <input type="password" id="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn block" type="submit" id="loginBtn">Entra</button>
+    <button class="linkbtn" type="button" id="resetBtn">Ho dimenticato la password</button>
+  </form>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="topin">
+      <div class="brand"><h1>Registro Tag NFC</h1><span class="sub">Roma</span></div>
+      <div class="who"><span class="avatar" id="meAv">–</span><span id="meName">…</span></div>
+      <button class="btn" id="addBtn">+ Nuovo locale</button>
+      <nav class="tabs" role="tablist">
+        <button class="tab" role="tab" data-view="lista" aria-selected="true">Locali</button>
+        <button class="tab" role="tab" data-view="mappa" aria-selected="false">Mappa</button>
+        <button class="tab" role="tab" data-view="team" aria-selected="false">Team</button>
+      </nav>
+    </div>
+  </header>
+  <div class="wrap">
+    <div class="warnbar" id="bar" hidden></div>
+    <div class="strip" id="strip"></div>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===================== costanti ===================== */
+var STATI={prova:"In prova",venduta:"Venduta",ricontattare:"Da ricontattare",restituita:"Restituita"};
+var COL={prova:"#C08A1E",venduta:"#2C7A54",ricontattare:"#3A5FA8",restituita:"#A93A2C"};
+var TIPI=["Bar","Ristorante","Pizzeria","Parrucchiere","Barbiere","Estetista","Palestra","Negozio","Officina","Tabacchi","B&B","Altro"];
+var ZONE=["Ponte Milvio","Corso Francia","Fleming","Vigna Clara","Talenti","Montesacro","Prati","Flaminio","Trieste","Monte Mario","Centro","Altra zona"];
+var PALETTE=["#0E8175","#9C6407","#3A5FA8","#7A4DA8","#A93A2C","#2C7A54"];
+var euro=new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR",maximumFractionDigits:0});
+
+/* ===================== stato ===================== */
+var sb=null, utente=null, profili=[], locali=[], view="lista", mappa=null, markers=null;
+var filtro={q:"",stato:"",vend:"",zona:""};
+
+function $(s){return document.querySelector(s);}
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
+function oggi(){return new Date().toISOString().slice(0,10);}
+function piu(g){return new Date(Date.now()+g*86400000).toISOString().slice(0,10);}
+function giorniA(d){if(!d)return null;return Math.round((new Date(d+"T00:00:00")-new Date(oggi()+"T00:00:00"))/86400000);}
+function dataIt(d){if(!d)return "—";var p=String(d).slice(0,10).split("-");return p[2]+"/"+p[1]+"/"+p[0].slice(2);}
+function iniz(n){return (n||"?").trim().slice(0,2).toUpperCase();}
+function profilo(id){for(var i=0;i<profili.length;i++) if(profili[i].id===id) return profili[i]; return null;}
+function nomeDi(id){var p=profilo(id); return p?p.nome:"—";}
+function coloreDi(id){var p=profilo(id); return p?p.colore:"#8A9895";}
+function toast(t){var d=el("div","toast",t);document.body.appendChild(d);setTimeout(function(){d.remove();},2600);}
+function avviso(t){var b=$("#bar");if(!t){b.hidden=true;return;}b.hidden=false;b.textContent=t;}
+
+/* ===================== avvio ===================== */
+var C=window.CONFIG||{};
+if(!C.SUPABASE_URL||C.SUPABASE_URL.indexOf("INCOLLA")===0){
+  $("#gateMsg").hidden=false;
+  $("#gateMsg").textContent="Configurazione mancante: apri index.html e incolla Project URL e chiave anon di Supabase.";
+  $("#loginBtn").disabled=true;
+}else{
+  sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY);
+  sb.auth.getSession().then(function(r){ if(r.data.session) entra(r.data.session.user); });
+  sb.auth.onAuthStateChange(function(ev,sess){
+    if(sess&&sess.user&&!utente) entra(sess.user);
+    if(!sess&&utente){ utente=null; location.reload(); }
+  });
+}
+
+$("#loginForm").addEventListener("submit",function(e){
+  e.preventDefault();
+  var b=$("#loginBtn"); b.disabled=true; b.textContent="Attendi…"; $("#gateMsg").hidden=true;
+  sb.auth.signInWithPassword({email:$("#email").value.trim(),password:$("#password").value})
+    .then(function(r){
+      b.disabled=false; b.textContent="Entra";
+      if(r.error){ $("#gateMsg").hidden=false; $("#gateMsg").className="msg err";
+        var m=r.error.message||"";
+        $("#gateMsg").textContent = /api key/i.test(m) ? "Chiave Supabase non valida: controlla SUPABASE_ANON_KEY in index.html."
+          : /invalid login/i.test(m) ? "Email o password non corretti."
+          : m; }
+    });
+});
+$("#resetBtn").addEventListener("click",function(){
+  var em=$("#email").value.trim();
+  if(!em){ $("#gateMsg").hidden=false; $("#gateMsg").className="msg err"; $("#gateMsg").textContent="Scrivi prima la tua email qui sopra."; return; }
+  sb.auth.resetPasswordForEmail(em,{redirectTo:location.href}).then(function(){
+    $("#gateMsg").hidden=false; $("#gateMsg").className="msg ok";
+    $("#gateMsg").textContent="Ti abbiamo inviato una email per reimpostare la password.";
+  });
+});
+
+function entra(u){
+  utente=u;
+  $("#gate").hidden=true; $("#app").hidden=false;
+  carica().then(function(){
+    render();
+    sb.channel("registro")
+      .on("postgres_changes",{event:"*",schema:"public",table:"locali"},function(){ carica().then(render); })
+      .on("postgres_changes",{event:"*",schema:"public",table:"profiles"},function(){ carica().then(render); })
+      .subscribe();
+  });
+}
+
+function carica(){
+  return Promise.all([
+    sb.from("profiles").select("id,nome,colore").order("nome"),
+    sb.from("locali").select("*")
+  ]).then(function(r){
+    if(r[0].error||r[1].error){ avviso("Errore di lettura dal database: "+((r[0].error||r[1].error).message)); return; }
+    profili=(r[0].data||[]).map(function(p,i){ if(!p.colore||p.colore==="#0E8175") p.colore=PALETTE[i%PALETTE.length]; return p; });
+    locali=r[1].data||[];
+    avviso("");
+  });
+}
+
+/* ===================== calcoli ===================== */
+function stat(list){
+  var s={locali:list.length,prova:0,tagProva:0,vendite:0,tagVenduti:0,inc:0,da:0,urgenti:0};
+  list.forEach(function(l){
+    if(l.stato==="prova"){ s.prova++; s.tagProva+=(+l.ntag||0);
+      var g=giorniA(l.scadenza); if(g!==null&&g<=2) s.urgenti++; }
+    if(l.stato==="venduta"){ s.vendite++; s.tagVenduti+=(+l.ntag||0);
+      if(l.pagato) s.inc+=(+l.prezzo||0); else s.da+=(+l.prezzo||0); }
+  });
+  return s;
+}
+function filtrati(){
+  var q=filtro.q.toLowerCase().trim();
+  return locali.filter(function(l){
+    if(filtro.stato&&l.stato!==filtro.stato) return false;
+    if(filtro.vend&&l.venditore_id!==filtro.vend) return false;
+    if(filtro.zona&&l.zona!==filtro.zona) return false;
+    if(q){
+      var b=[l.nome,l.tipo,l.zona,l.indirizzo,l.referente,l.telefono,l.note,nomeDi(l.venditore_id)].join(" ").toLowerCase();
+      if(b.indexOf(q)<0) return false;
+    }
+    return true;
+  }).sort(function(a,b){
+    var o={prova:0,ricontattare:1,venduta:2,restituita:3};
+    if(o[a.stato]!==o[b.stato]) return o[a.stato]-o[b.stato];
+    var ga=giorniA(a.scadenza),gb=giorniA(b.scadenza);
+    if(a.stato==="prova"&&b.stato==="prova"&&ga!==null&&gb!==null) return ga-gb;
+    return String(b.aggiornato||"").localeCompare(String(a.aggiornato||""));
+  });
+}
+
+/* ===================== scrittura ===================== */
+function salva(d){
+  var p={
+    nome:d.nome||"", tipo:d.tipo||null, referente:d.referente||"", telefono:d.telefono||"",
+    indirizzo:d.indirizzo||"", zona:d.zona||"", lat:d.lat===""?null:Number(d.lat), lng:d.lng===""?null:Number(d.lng),
+    stato:d.stato, ntag:parseInt(d.ntag,10)||0, prezzo:Number(d.prezzo)||0, pagato:!!d.pagato,
+    data:d.data||null, scadenza:d.scadenza||null, followup:d.followup||null,
+    note:d.note||"", storico:d.storico||[], venditore_id:d.venditore_id||utente.id
+  };
+  var q = d.id ? sb.from("locali").update(p).eq("id",d.id) : sb.from("locali").insert(p);
+  return q.then(function(r){
+    if(r.error){ avviso("Salvataggio non riuscito: "+r.error.message); return false; }
+    toast(d.id?"Modifiche salvate":"Locale aggiunto"); return carica().then(function(){ render(); return true; });
+  });
+}
+function elimina(id){
+  return sb.from("locali").delete().eq("id",id).then(function(r){
+    if(r.error){ avviso("Eliminazione non riuscita: "+r.error.message); return; }
+    toast("Locale eliminato"); return carica().then(render);
+  });
+}
+
+/* ===================== strip ===================== */
+function renderStrip(){
+  var s=stat(locali), mio=stat(locali.filter(function(l){return l.venditore_id===utente.id;}));
+  var strip=$("#strip"); strip.innerHTML="";
+  function cell(k,v,n,al){
+    var c=el("div","cell"+(al?" alert":"")); c.appendChild(el("div","k",k));
+    c.appendChild(el("div","v tnum",v)); if(n)c.appendChild(el("div","n",n)); strip.appendChild(c);
+  }
+  cell("Tag in prova",String(s.tagProva),s.prova+" locali · "+mio.tagProva+" tuoi");
+  cell("Prove in scadenza",String(s.urgenti),s.urgenti?"entro 2 giorni":"nessuna urgenza",s.urgenti>0);
+  cell("Vendite chiuse",String(s.vendite),s.tagVenduti+" tag · "+mio.vendite+" tue");
+  cell("Incassato",euro.format(s.inc),"tuo: "+euro.format(mio.inc));
+  cell("Da incassare",euro.format(s.da),s.da?"da ritirare":"tutto saldato",s.da>0);
+}
+
+/* ===================== lista ===================== */
+function selF(key,opts){
+  var s=el("select","field");
+  opts.forEach(function(o){var op=el("option",null,o[1]);op.value=o[0];if(filtro[key]===o[0])op.selected=true;s.appendChild(op);});
+  s.addEventListener("change",function(){filtro[key]=s.value;renderBody();});
+  return s;
+}
+function pill(t,c){return el("span","pill "+c,t);}
+function renderLista(main){
+  var bar=el("div","toolbar");
+  var q=el("input","field search"); q.type="search"; q.placeholder="Cerca locale, via, referente…"; q.value=filtro.q;
+  q.addEventListener("input",function(){filtro.q=q.value;renderBody();});
+  bar.appendChild(q);
+  bar.appendChild(selF("stato",[["","Tutti gli stati"]].concat(Object.keys(STATI).map(function(k){return [k,STATI[k]];}))));
+  bar.appendChild(selF("vend",[["","Tutti"]].concat(profili.map(function(p){return [p.id,p.nome];}))));
+  bar.appendChild(selF("zona",[["","Tutte le zone"]].concat(ZONE.map(function(z){return [z,z];}))));
+  main.appendChild(bar);
+
+  if(!locali.length){
+    var e=el("div","empty");
+    e.appendChild(el("h3",null,"Nessun locale ancora"));
+    e.appendChild(el("p","note","Aggiungi il primo locale quando lasci una tag in prova o chiudi una vendita: tu, Tommaso e Michele vedete lo stesso registro in tempo reale."));
+    var b=el("button","btn","+ Nuovo locale"); b.style.marginTop="14px"; b.onclick=function(){apri(null);};
+    e.appendChild(b); main.appendChild(e); return;
+  }
+  var list=filtrati();
+  if(!list.length){ main.appendChild(el("div","empty","Nessun locale corrisponde ai filtri.")); return; }
+
+  var rows=el("div","rows");
+  list.forEach(function(l){
+    var b=el("button","row s-"+l.stato); b.type="button";
+    b.appendChild(el("div","stripe"));
+    var mid=el("div");
+    var nm=el("div","name"); nm.appendChild(document.createTextNode(l.nome||"Senza nome"));
+    nm.appendChild(pill(STATI[l.stato]||l.stato,"p-"+l.stato));
+    if(l.stato==="prova"){
+      var g=giorniA(l.scadenza);
+      if(g!==null&&g<0) nm.appendChild(pill("Scaduta da "+(-g)+"g","p-scaduta"));
+      else if(g!==null&&g<=2) nm.appendChild(pill(g===0?"Scade oggi":"Scade tra "+g+"g","p-oggi"));
+    }
+    if(l.stato==="venduta"&&!l.pagato) nm.appendChild(pill("Da incassare","p-nopay"));
+    mid.appendChild(nm);
+    var meta=el("div","meta");
+    meta.appendChild(el("span",null,(l.tipo||"—")+" · "+(l.zona||"zona n.d.")));
+    if(l.indirizzo) meta.appendChild(el("span",null,l.indirizzo));
+    meta.appendChild(el("span",null,(+l.ntag||0)+" tag"));
+    if(l.referente) meta.appendChild(el("span",null,l.referente+(l.telefono?" · "+l.telefono:"")));
+    mid.appendChild(meta); b.appendChild(mid);
+    var r=el("div","right");
+    var d=el("span","dot",iniz(nomeDi(l.venditore_id))); d.style.background=coloreDi(l.venditore_id); d.title=nomeDi(l.venditore_id);
+    r.appendChild(d);
+    r.appendChild(el("span","amt tnum",(+l.prezzo)?euro.format(+l.prezzo):"—"));
+    r.appendChild(el("span","note mono",l.stato==="prova"?"scad. "+dataIt(l.scadenza):dataIt(l.data)));
+    b.appendChild(r);
+    b.onclick=function(){apri(l);};
+    rows.appendChild(b);
+  });
+  main.appendChild(rows);
+}
+
+/* ===================== mappa ===================== */
+function renderMappa(main){
+  var conPos=locali.filter(function(l){return l.lat!=null&&l.lng!=null;});
+  var card=el("div","mapcard");
+  var head=el("div","maphead");
+  head.appendChild(el("strong",null,conPos.length+" locali sulla mappa"));
+  var lg=el("div","legend");
+  Object.keys(STATI).forEach(function(k){
+    var s=el("span"); var i=el("i","lg"); i.style.background=COL[k]; s.appendChild(i); s.appendChild(document.createTextNode(STATI[k])); lg.appendChild(s);
+  });
+  head.appendChild(lg); card.appendChild(head);
+  var box=el("div"); box.id="map"; card.appendChild(box);
+  var senza=locali.length-conPos.length;
+  if(senza>0) card.appendChild(el("div","nopos",senza+" local"+(senza===1?"e":"i")+" senza posizione: apri la scheda e usa «Posizione attuale» o «Trova dall'indirizzo»."));
+  main.appendChild(card);
+
+  mappa=L.map("map",{scrollWheelZoom:true}).setView([41.9280,12.4800],12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    maxZoom:19, attribution:'&copy; OpenStreetMap'
+  }).addTo(mappa);
+  markers=L.layerGroup().addTo(mappa);
+  var pts=[];
+  conPos.forEach(function(l){
+    var c=COL[l.stato]||"#8A9895";
+    var m=L.circleMarker([l.lat,l.lng],{radius:9,color:"#fff",weight:2,fillColor:c,fillOpacity:1});
+    var html='<strong>'+(l.nome||"—").replace(/</g,"&lt;")+'</strong><br>'+
+             (STATI[l.stato]||l.stato)+' · '+(+l.ntag||0)+' tag<br>'+
+             '<span style="color:#666">'+nomeDi(l.venditore_id)+'</span>';
+    m.bindPopup(html);
+    m.on("click",function(){ apri(l); });
+    m.addTo(markers); pts.push([l.lat,l.lng]);
+  });
+  if(pts.length) mappa.fitBounds(L.latLngBounds(pts).pad(0.25),{maxZoom:15});
+  setTimeout(function(){ if(mappa) mappa.invalidateSize(); },120);
+}
+
+/* ===================== team ===================== */
+function renderTeam(main){
+  var grid=el("div","grid3");
+  profili.forEach(function(p){
+    var mine=locali.filter(function(l){return l.venditore_id===p.id;});
+    var s=stat(mine);
+    var c=el("div","card");
+    var h=el("h3"); var av=el("span","avatar",iniz(p.nome)); av.style.background=p.colore;
+    h.appendChild(av); h.appendChild(document.createTextNode(p.nome+(p.id===utente.id?" (tu)":"")));
+    c.appendChild(h);
+    var box=el("div"); box.style.marginTop="10px";
+    [["Locali seguiti",s.locali],["Tag in prova",s.tagProva],["Vendite chiuse",s.vendite],
+     ["Tag venduti",s.tagVenduti],["Incassato",euro.format(s.inc)],["Da incassare",euro.format(s.da)],
+     ["Conversione",s.locali?Math.round(s.vendite/s.locali*100)+"%":"—"]].forEach(function(r){
+      var k=el("div","kv"); k.appendChild(el("span","k",r[0])); k.appendChild(el("span","v",String(r[1]))); box.appendChild(k);
+    });
+    c.appendChild(box); grid.appendChild(c);
+  });
+  main.appendChild(grid);
+
+  var me=profilo(utente.id)||{nome:"",colore:PALETTE[0]};
+  var card=el("div","card"); card.style.marginTop="12px";
+  card.appendChild(el("h3",null,"Il tuo profilo"));
+  card.appendChild(el("p","note","Il nome che vedono gli altri accanto a ogni locale che registri."));
+  var row=el("div","actions"); row.style.marginTop="10px";
+  var inp=el("input","field"); inp.value=me.nome; inp.style.maxWidth="220px";
+  var b=el("button","btn ghost","Salva nome");
+  b.onclick=function(){
+    var v=inp.value.trim(); if(!v) return;
+    sb.from("profiles").upsert({id:utente.id,nome:v,colore:me.colore}).then(function(r){
+      if(r.error){ avviso("Non riesco a salvare il nome: "+r.error.message); return; }
+      toast("Nome aggiornato"); carica().then(render);
+    });
+  };
+  var out=el("button","btn danger","Esci"); out.style.marginLeft="auto";
+  out.onclick=function(){ sb.auth.signOut(); };
+  row.appendChild(inp); row.appendChild(b); row.appendChild(out);
+  card.appendChild(row);
+  card.appendChild(el("p","note","Per aggiungere un membro: Supabase → Authentication → Users → Add user. Il profilo compare qui in automatico."));
+  main.appendChild(card);
+}
+
+/* ===================== scheda locale ===================== */
+function apri(l){
+  var nuovo=!l;
+  var d = l ? JSON.parse(JSON.stringify(l)) : {
+    nome:"",tipo:"Bar",referente:"",telefono:"",indirizzo:"",zona:"Ponte Milvio",lat:"",lng:"",
+    stato:"prova",ntag:1,prezzo:"",pagato:false,data:oggi(),scadenza:piu(7),followup:"",
+    note:"",storico:[],venditore_id:utente.id
+  };
+  ["data","scadenza","followup"].forEach(function(k){ d[k]=d[k]?String(d[k]).slice(0,10):""; });
+  if(d.lat==null)d.lat=""; if(d.lng==null)d.lng="";
+  if(!Array.isArray(d.storico)) d.storico=[];
+
+  var scrim=el("div","scrim"), sheet=el("div","sheet");
+  var head=el("div","sheethead");
+  head.appendChild(el("h2",null,nuovo?"Nuovo locale":(d.nome||"Locale")));
+  var cl=el("button","btn ghost sm","Chiudi"); cl.onclick=chiudi; head.appendChild(cl);
+  sheet.appendChild(head);
+  var body=el("div","sheetbody"); sheet.appendChild(body);
+
+  function campo(lab,key,type,opts){
+    var w=el("label","lab",lab),inp;
+    if(type==="select"){ inp=el("select"); opts.forEach(function(o){var op=el("option",null,o[1]);op.value=o[0];if(String(d[key])===String(o[0]))op.selected=true;inp.appendChild(op);}); }
+    else if(type==="textarea"){ inp=el("textarea"); inp.rows=3; inp.value=d[key]||""; }
+    else { inp=el("input"); inp.type=type||"text"; inp.value=d[key]==null?"":d[key]; if(type==="number") inp.min="0"; }
+    inp.addEventListener("input",function(){ d[key]=inp.value; });
+    inp.addEventListener("change",function(){ d[key]=inp.value; });
+    w.appendChild(inp); return w;
+  }
+
+  var s1=el("div","fset");
+  s1.appendChild(campo("Nome locale","nome"));
+  s1.appendChild(campo("Tipo attività","tipo","select",TIPI.map(function(t){return [t,t];})));
+  s1.appendChild(campo("Referente","referente"));
+  s1.appendChild(campo("Telefono","telefono","tel"));
+  body.appendChild(s1);
+
+  var s2=el("div","sect"); s2.appendChild(el("h3",null,"Posizione"));
+  var f2=el("div","fset");
+  var indW=campo("Indirizzo","indirizzo");
+  f2.appendChild(indW);
+  f2.appendChild(campo("Zona","zona","select",ZONE.map(function(z){return [z,z];})));
+  var latW=campo("Latitudine","lat"), lngW=campo("Longitudine","lng");
+  f2.appendChild(latW); f2.appendChild(lngW);
+  s2.appendChild(f2);
+  var pos=el("div","actions"); pos.style.marginTop="10px";
+  var gps=el("button","btn ghost sm","Posizione attuale"); gps.type="button";
+  gps.onclick=function(){
+    if(!navigator.geolocation){ gps.textContent="GPS non disponibile"; return; }
+    gps.textContent="Rilevo…";
+    navigator.geolocation.getCurrentPosition(function(p){
+      setCoord(p.coords.latitude,p.coords.longitude); gps.textContent="Posizione presa ✓";
+    },function(){ gps.textContent="Permesso negato"; },{enableHighAccuracy:true,timeout:10000});
+  };
+  var geo=el("button","btn ghost sm","Trova dall'indirizzo"); geo.type="button";
+  geo.onclick=function(){
+    var q=(d.indirizzo||"")+", Roma, Italia";
+    if(!d.indirizzo){ geo.textContent="Scrivi prima l'indirizzo"; return; }
+    geo.textContent="Cerco…";
+    fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=it&q="+encodeURIComponent(q))
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&j[0]){ setCoord(parseFloat(j[0].lat),parseFloat(j[0].lon)); geo.textContent="Trovato ✓"; }
+        else geo.textContent="Non trovato — usa il GPS";
+      }).catch(function(){ geo.textContent="Ricerca non riuscita"; });
+  };
+  function setCoord(la,lo){
+    d.lat=la.toFixed(6); d.lng=lo.toFixed(6);
+    latW.querySelector("input").value=d.lat; lngW.querySelector("input").value=d.lng;
+    upMaps();
+  }
+  var maps=el("a","btn ghost sm","Apri su Google Maps"); maps.target="_blank"; maps.rel="noopener";
+  maps.style.textDecoration="none";
+  function upMaps(){
+    var q=(d.lat&&d.lng)?d.lat+","+d.lng:((d.indirizzo||d.nome||"Roma")+" Roma");
+    maps.href="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q);
+  }
+  upMaps();
+  indW.querySelector("input").addEventListener("input",upMaps);
+  pos.appendChild(gps); pos.appendChild(geo); pos.appendChild(maps);
+  s2.appendChild(pos); body.appendChild(s2);
+
+  var s3=el("div","sect"); s3.appendChild(el("h3",null,"Tag e stato"));
+  var f3=el("div","fset");
+  f3.appendChild(campo("Stato","stato","select",Object.keys(STATI).map(function(k){return [k,STATI[k]];})));
+  f3.appendChild(campo("Numero tag","ntag","number"));
+  f3.appendChild(campo("Prezzo totale (€)","prezzo","number"));
+  f3.appendChild(campo("Venditore","venditore_id","select",profili.map(function(p){return [p.id,p.nome];})));
+  s3.appendChild(f3);
+  var f4=el("div","fset"); f4.style.marginTop="10px";
+  f4.appendChild(campo("Data consegna","data","date"));
+  f4.appendChild(campo("Scadenza prova","scadenza","date"));
+  f4.appendChild(campo("Prossimo contatto","followup","date"));
+  s3.appendChild(f4);
+  var pay=el("label","check"); pay.style.marginTop="10px";
+  var cb=el("input"); cb.type="checkbox"; cb.checked=!!d.pagato;
+  cb.addEventListener("change",function(){ d.pagato=cb.checked; });
+  pay.appendChild(cb); pay.appendChild(document.createTextNode("Pagamento incassato"));
+  s3.appendChild(pay); body.appendChild(s3);
+
+  var s5=el("div","sect"); s5.appendChild(el("h3",null,"Note"));
+  s5.appendChild(campo("Note libere","note","textarea")); body.appendChild(s5);
+
+  var s6=el("div","sect"); s6.appendChild(el("h3",null,"Storico visite"));
+  var hist=el("div","hist");
+  function drawHist(){
+    hist.innerHTML="";
+    var st=(d.storico||[]).slice().reverse();
+    if(!st.length){ hist.appendChild(el("div","note","Nessuna visita registrata.")); return; }
+    st.forEach(function(h){
+      var i=el("div","hitem"); i.appendChild(el("div",null,h.testo));
+      i.appendChild(el("div","hm",dataIt((h.ts||"").slice(0,10))+" · "+(h.chi||"")));
+      hist.appendChild(i);
+    });
+  }
+  drawHist(); s6.appendChild(hist);
+  var hrow=el("div","actions"); hrow.style.marginTop="10px";
+  var hin=el("input","field"); hin.placeholder="Es. passato a controllare, titolare interessato"; hin.style.flex="1 1 210px";
+  var hb=el("button","btn ghost sm","Registra visita"); hb.type="button";
+  hb.onclick=function(){
+    var v=hin.value.trim(); if(!v) return;
+    d.storico=(d.storico||[]).concat([{ts:new Date().toISOString(),chi:nomeDi(utente.id),testo:v}]);
+    hin.value=""; drawHist();
+  };
+  hrow.appendChild(hin); hrow.appendChild(hb); s6.appendChild(hrow); body.appendChild(s6);
+
+  var act=el("div","actions sect");
+  var save=el("button","btn",nuovo?"Salva locale":"Salva modifiche");
+  save.onclick=function(){
+    if(!String(d.nome).trim()) d.nome="Locale senza nome";
+    save.disabled=true; save.textContent="Salvo…";
+    salva(d).then(function(ok){ if(ok) chiudi(); else { save.disabled=false; save.textContent="Riprova"; } });
+  };
+  act.appendChild(save);
+  if(!nuovo){
+    var del=el("button","btn danger","Elimina");
+    del.onclick=function(){
+      if(del.dataset.c){ elimina(d.id); chiudi(); }
+      else { del.dataset.c="1"; del.textContent="Premi ancora per eliminare"; }
+    };
+    act.appendChild(del);
+  }
+  act.appendChild(el("span","note spacer",nuovo?"Verrà intestato a "+nomeDi(utente.id):"Inserito da "+nomeDi(d.venditore_id)));
+  body.appendChild(act);
+
+  scrim.appendChild(sheet);
+  scrim.addEventListener("click",function(e){ if(e.target===scrim) chiudi(); });
+  document.addEventListener("keydown",onEsc);
+  function onEsc(e){ if(e.key==="Escape") chiudi(); }
+  function chiudi(){ document.removeEventListener("keydown",onEsc); scrim.remove(); }
+  document.body.appendChild(scrim);
+}
+
+/* ===================== shell ===================== */
+function renderBody(){
+  if(mappa){ mappa.remove(); mappa=null; }
+  var main=$("#main"); main.innerHTML="";
+  if(view==="lista") renderLista(main);
+  else if(view==="mappa") renderMappa(main);
+  else renderTeam(main);
+}
+function render(){
+  var me=profilo(utente.id);
+  $("#meName").textContent = me?me.nome:(utente.email||"").split("@")[0];
+  var av=$("#meAv"); av.textContent=iniz(me?me.nome:utente.email); av.style.background=me?me.colore:PALETTE[0];
+  renderStrip(); renderBody();
+}
+Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
+  t.addEventListener("click",function(){
+    view=t.dataset.view;
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(x){
+      x.setAttribute("aria-selected",x.dataset.view===view?"true":"false");
+    });
+    renderBody();
+  });
+});
+$("#addBtn").addEventListener("click",function(){ apri(null); });
+
+})();
+</script>
+</body>
+</html>
