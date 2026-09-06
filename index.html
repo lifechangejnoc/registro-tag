@@ -214,6 +214,24 @@ label.check{display:flex;align-items:center;gap:8px;font-size:14px}
   </form>
 </div>
 
+<!-- ================= PIN ================= -->
+<div class="gate" id="pinGate" hidden>
+  <form class="gatecard" id="pinForm">
+    <div>
+      <div class="sub" id="pinWho">Roma</div>
+      <h1 id="pinTitle">Inserisci il PIN</h1>
+    </div>
+    <p class="note" id="pinNote" hidden></p>
+    <div class="msg err" id="pinMsg" hidden></div>
+    <label class="lab" id="pinLab">PIN
+      <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+             autocomplete="off" style="letter-spacing:.4em;font-size:22px;text-align:center" required>
+    </label>
+    <button class="btn block" type="submit" id="pinBtn">Entra</button>
+    <button class="linkbtn" type="button" id="pinOther">Entra con email e password</button>
+  </form>
+</div>
+
 <!-- ================= APP ================= -->
 <div id="app" hidden>
   <header class="top">
@@ -271,7 +289,7 @@ if(!C.SUPABASE_URL||C.SUPABASE_URL.indexOf("INCOLLA")===0){
   $("#gateMsg").textContent="Configurazione mancante: apri index.html e incolla Project URL e chiave anon di Supabase.";
   $("#loginBtn").disabled=true;
 }else{
-  sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY);
+  sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
   sb.auth.getSession().then(function(r){ if(r.data.session) entra(r.data.session.user); });
   sb.auth.onAuthStateChange(function(ev,sess){
     if(sess&&sess.user&&!utente) entra(sess.user);
@@ -282,6 +300,7 @@ if(!C.SUPABASE_URL||C.SUPABASE_URL.indexOf("INCOLLA")===0){
 $("#loginForm").addEventListener("submit",function(e){
   e.preventDefault();
   var b=$("#loginBtn"); b.disabled=true; b.textContent="Attendi…"; $("#gateMsg").hidden=true;
+  appenaLoggato=true;
   sb.auth.signInWithPassword({email:$("#email").value.trim(),password:$("#password").value})
     .then(function(r){
       b.disabled=false; b.textContent="Entra";
@@ -301,9 +320,70 @@ $("#resetBtn").addEventListener("click",function(){
   });
 });
 
+/* ---------- PIN locale ---------- */
+var PINKEY="nfc_pin_v1", appenaLoggato=false, tentativi=0, pinMode="check";
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+function hashPin(p){
+  var dati=new TextEncoder().encode("registro-tag|"+(utente?utente.id:"")+"|"+p);
+  return crypto.subtle.digest("SHA-256",dati).then(function(h){
+    return Array.prototype.map.call(new Uint8Array(h),function(b){return ("0"+b.toString(16)).slice(-2);}).join("");
+  });
+}
+function mostraPin(mode){
+  pinMode=mode; tentativi=0;
+  $("#gate").hidden=true; $("#app").hidden=true; $("#pinGate").hidden=false;
+  $("#pinMsg").hidden=true; $("#pinInput").value="";
+  var nome=(utente.email||"").split("@")[0];
+  $("#pinWho").textContent=nome;
+  if(mode==="set"){
+    $("#pinTitle").textContent="Scegli un PIN";
+    $("#pinNote").hidden=false;
+    $("#pinNote").textContent="Da 4 a 6 cifre. Le prossime volte entri con questo, senza riscrivere email e password su questo telefono.";
+    $("#pinLab").firstChild.nodeValue="Nuovo PIN";
+    $("#pinBtn").textContent="Salva PIN e entra";
+    $("#pinOther").textContent="Salta, entro senza PIN";
+  }else{
+    $("#pinTitle").textContent="Bentornato";
+    $("#pinNote").hidden=true;
+    $("#pinLab").firstChild.nodeValue="PIN";
+    $("#pinBtn").textContent="Entra";
+    $("#pinOther").textContent="Ho dimenticato il PIN";
+  }
+  setTimeout(function(){ $("#pinInput").focus(); },80);
+}
+$("#pinForm").addEventListener("submit",function(e){
+  e.preventDefault();
+  var v=$("#pinInput").value.trim();
+  if(!/^[0-9]{4,6}$/.test(v)){
+    $("#pinMsg").hidden=false; $("#pinMsg").textContent="Il PIN deve essere da 4 a 6 cifre."; return;
+  }
+  hashPin(v).then(function(h){
+    if(pinMode==="set"){ lsSet(PINKEY,h); $("#pinGate").hidden=true; avviaApp(); return; }
+    if(h===lsGet(PINKEY)){ $("#pinGate").hidden=true; avviaApp(); return; }
+    tentativi++;
+    $("#pinInput").value="";
+    if(tentativi>=5){ lsDel(PINKEY); sb.auth.signOut().then(function(){ location.reload(); }); return; }
+    $("#pinMsg").hidden=false;
+    $("#pinMsg").textContent="PIN errato. Altri "+(5-tentativi)+" tentativi, poi serve la password.";
+  });
+});
+$("#pinOther").addEventListener("click",function(){
+  if(pinMode==="set"){ $("#pinGate").hidden=true; avviaApp(); return; }
+  lsDel(PINKEY);
+  sb.auth.signOut().then(function(){ location.reload(); });
+});
+
 function entra(u){
   utente=u;
-  $("#gate").hidden=true; $("#app").hidden=false;
+  $("#gate").hidden=true;
+  if(!lsGet(PINKEY)) return mostraPin("set");
+  if(appenaLoggato) return avviaApp();
+  mostraPin("check");
+}
+function avviaApp(){
+  $("#gate").hidden=true; $("#pinGate").hidden=true; $("#app").hidden=false;
   carica().then(function(){
     render();
     sb.channel("registro")
@@ -524,8 +604,10 @@ function renderTeam(main){
     });
   };
   var out=el("button","btn danger","Esci"); out.style.marginLeft="auto";
-  out.onclick=function(){ sb.auth.signOut(); };
-  row.appendChild(inp); row.appendChild(b); row.appendChild(out);
+  out.onclick=function(){ lsDel(PINKEY); sb.auth.signOut(); };
+  var pin=el("button","btn ghost", lsGet(PINKEY)?"Cambia PIN":"Imposta PIN");
+  pin.onclick=function(){ mostraPin("set"); };
+  row.appendChild(inp); row.appendChild(b); row.appendChild(pin); row.appendChild(out);
   card.appendChild(row);
   card.appendChild(el("p","note","Per aggiungere un membro: Supabase → Authentication → Users → Add user. Il profilo compare qui in automatico."));
   main.appendChild(card);
