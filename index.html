@@ -154,6 +154,13 @@ select.field{cursor:pointer}
 .pin{border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .leaflet-popup-content{font-family:"Public Sans",sans-serif}
 
+/* ---------- cassa ---------- */
+.k2{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.saldo{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:40px;
+  letter-spacing:-.03em;line-height:1.1;margin:2px 0 4px;color:var(--accent)}
+.row.mov{cursor:default}
+.row.mov:hover{background:var(--surface);border-color:var(--line)}
+
 /* ---------- team ---------- */
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
@@ -242,6 +249,7 @@ label.check{display:flex;align-items:center;gap:8px;font-size:14px}
       <nav class="tabs" role="tablist">
         <button class="tab" role="tab" data-view="lista" aria-selected="true">Locali</button>
         <button class="tab" role="tab" data-view="mappa" aria-selected="false">Mappa</button>
+        <button class="tab" role="tab" data-view="cassa" aria-selected="false">Cassa</button>
         <button class="tab" role="tab" data-view="team" aria-selected="false">Team</button>
       </nav>
     </div>
@@ -260,13 +268,14 @@ label.check{display:flex;align-items:center;gap:8px;font-size:14px}
 /* ===================== costanti ===================== */
 var STATI={prova:"In prova",venduta:"Venduta",ricontattare:"Da ricontattare",restituita:"Restituita"};
 var COL={prova:"#C08A1E",venduta:"#2C7A54",ricontattare:"#3A5FA8",restituita:"#A93A2C"};
+var CATEGORIE=["Acquisto tag","Materiale","Trasporti","Pubblicità","Spese varie","Divisione utili"];
 var TIPI=["Bar","Ristorante","Pizzeria","Parrucchiere","Barbiere","Estetista","Palestra","Negozio","Officina","Tabacchi","B&B","Altro"];
 var ZONE=["Ponte Milvio","Corso Francia","Fleming","Vigna Clara","Talenti","Montesacro","Prati","Flaminio","Trieste","Monte Mario","Centro","Altra zona"];
 var PALETTE=["#0E8175","#9C6407","#3A5FA8","#7A4DA8","#A93A2C","#2C7A54"];
 var euro=new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR",maximumFractionDigits:0});
 
 /* ===================== stato ===================== */
-var sb=null, utente=null, profili=[], locali=[], view="lista", mappa=null, markers=null;
+var sb=null, utente=null, profili=[], locali=[], movimenti=[], view="lista", mappa=null, markers=null;
 var filtro={q:"",stato:"",vend:"",zona:""};
 
 function $(s){return document.querySelector(s);}
@@ -389,6 +398,7 @@ function avviaApp(){
     sb.channel("registro")
       .on("postgres_changes",{event:"*",schema:"public",table:"locali"},function(){ carica().then(render); })
       .on("postgres_changes",{event:"*",schema:"public",table:"profiles"},function(){ carica().then(render); })
+      .on("postgres_changes",{event:"*",schema:"public",table:"cassa"},function(){ carica().then(render); })
       .subscribe();
   });
 }
@@ -396,12 +406,47 @@ function avviaApp(){
 function carica(){
   return Promise.all([
     sb.from("profiles").select("id,nome,colore").order("nome"),
-    sb.from("locali").select("*")
+    sb.from("locali").select("*"),
+    sb.from("cassa").select("*").order("data",{ascending:false})
   ]).then(function(r){
-    if(r[0].error||r[1].error){ avviso("Errore di lettura dal database: "+((r[0].error||r[1].error).message)); return; }
+    var err=r[0].error||r[1].error;
+    if(err){ avviso("Errore di lettura dal database: "+err.message); return; }
     profili=(r[0].data||[]).map(function(p,i){ if(!p.colore||p.colore==="#0E8175") p.colore=PALETTE[i%PALETTE.length]; return p; });
     locali=r[1].data||[];
-    avviso("");
+    if(r[2].error){ movimenti=[]; avviso("Cassa non disponibile: esegui schema-cassa.sql su Supabase."); }
+    else { movimenti=r[2].data||[]; avviso(""); }
+  });
+}
+
+/* ===================== cassa ===================== */
+function entrateVendite(){
+  var t=0; locali.forEach(function(l){ if(l.stato==="venduta"&&l.pagato) t+=(+l.prezzo||0); }); return t;
+}
+function totMov(tipo,chi){
+  var t=0;
+  movimenti.forEach(function(m){
+    if(m.tipo!==tipo) return;
+    if(chi && m.autore_id!==chi) return;
+    t+=(+m.importo||0);
+  });
+  return t;
+}
+function saldoCassa(){ return entrateVendite()+totMov("versamento")-totMov("prelievo"); }
+
+function salvaMovimento(m){
+  return sb.from("cassa").insert({
+    tipo:m.tipo, importo:Number(m.importo)||0, motivo:m.motivo, categoria:m.categoria||null,
+    data:m.data||oggi(), note:m.note||"", autore_id:utente.id
+  }).then(function(r){
+    if(r.error){ avviso("Movimento non registrato: "+r.error.message); return false; }
+    toast(m.tipo==="prelievo"?"Prelievo registrato":"Versamento registrato");
+    return carica().then(function(){ render(); return true; });
+  });
+}
+function eliminaMovimento(id){
+  return sb.from("cassa").delete().eq("id",id).then(function(r){
+    if(r.error){ avviso("Non riesco a eliminare il movimento: "+r.error.message); return; }
+    toast("Movimento eliminato"); return carica().then(render);
   });
 }
 
@@ -471,6 +516,8 @@ function renderStrip(){
   cell("Vendite chiuse",String(s.vendite),s.tagVenduti+" tag · "+mio.vendite+" tue");
   cell("Incassato",euro.format(s.inc),"tuo: "+euro.format(mio.inc));
   cell("Da incassare",euro.format(s.da),s.da?"da ritirare":"tutto saldato",s.da>0);
+  var sc=saldoCassa();
+  cell("Fondo comune",euro.format(sc),"prelevato: "+euro.format(totMov("prelievo")),sc<0);
 }
 
 /* ===================== lista ===================== */
@@ -569,6 +616,130 @@ function renderMappa(main){
   setTimeout(function(){ if(mappa) mappa.invalidateSize(); },120);
 }
 
+/* ===================== vista cassa ===================== */
+function renderCassa(main){
+  var entrate=entrateVendite(), vers=totMov("versamento"), prel=totMov("prelievo"), saldo=saldoCassa();
+
+  var top=el("div","card");
+  top.appendChild(el("div","k2","Disponibile nel fondo comune"));
+  var big=el("div","saldo tnum",euro.format(saldo));
+  if(saldo<0) big.style.color="var(--bad)";
+  top.appendChild(big);
+  var det=el("div","note");
+  det.textContent="Vendite incassate "+euro.format(entrate)+"  ·  versamenti "+euro.format(vers)+"  ·  prelievi "+euro.format(prel);
+  top.appendChild(det);
+  var az=el("div","actions"); az.style.marginTop="14px";
+  var bp=el("button","btn","− Preleva"); bp.onclick=function(){ apriMovimento("prelievo"); };
+  var bv=el("button","btn ghost","+ Versa"); bv.onclick=function(){ apriMovimento("versamento"); };
+  az.appendChild(bp); az.appendChild(bv);
+  top.appendChild(az);
+  main.appendChild(top);
+
+  var h=el("h3"); h.style.margin="20px 0 10px"; h.style.fontSize="16px";
+  h.textContent="Movimenti"; main.appendChild(h);
+
+  if(!movimenti.length){
+    main.appendChild(el("div","empty","Nessun movimento. Ogni prelievo va motivato: resta scritto qui per tutti e tre."));
+    return;
+  }
+  var rows=el("div","rows");
+  movimenti.forEach(function(m){
+    var pre=m.tipo==="prelievo";
+    var b=el("div","row mov"+(pre?" s-restituita":" s-venduta"));
+    b.appendChild(el("div","stripe"));
+    var mid=el("div");
+    var nm=el("div","name"); nm.appendChild(document.createTextNode(m.motivo||"(senza motivo)"));
+    if(m.categoria) nm.appendChild(pill(m.categoria,"p-nopay"));
+    mid.appendChild(nm);
+    var meta=el("div","meta");
+    meta.appendChild(el("span",null,dataIt(m.data)));
+    meta.appendChild(el("span",null,nomeDi(m.autore_id)));
+    if(m.note) meta.appendChild(el("span",null,m.note));
+    mid.appendChild(meta);
+    b.appendChild(mid);
+    var right=el("div","right");
+    var amt=el("span","amt tnum",(pre?"−":"+")+euro.format(+m.importo||0));
+    amt.style.color=pre?"var(--bad)":"var(--ok)";
+    right.appendChild(amt);
+    if(m.autore_id===utente.id){
+      var del=el("button","linkbtn","elimina");
+      del.onclick=function(){
+        if(del.dataset.c) eliminaMovimento(m.id);
+        else { del.dataset.c="1"; del.textContent="confermi?"; }
+      };
+      right.appendChild(del);
+    }
+    b.appendChild(right);
+    rows.appendChild(b);
+  });
+  main.appendChild(rows);
+}
+
+function apriMovimento(tipo){
+  var pre=tipo==="prelievo";
+  var d={tipo:tipo,importo:"",motivo:"",categoria:pre?"Spese varie":"Acquisto tag",data:oggi(),note:""};
+  var scrim=el("div","scrim"), sheet=el("div","sheet");
+  var head=el("div","sheethead");
+  head.appendChild(el("h2",null,pre?"Preleva dal fondo":"Versa nel fondo"));
+  var cl=el("button","btn ghost sm","Chiudi"); cl.onclick=chiudi; head.appendChild(cl);
+  sheet.appendChild(head);
+  var body=el("div","sheetbody"); sheet.appendChild(body);
+
+  function campo(lab,key,type,opts){
+    var w=el("label","lab",lab),inp;
+    if(type==="select"){ inp=el("select"); opts.forEach(function(o){var op=el("option",null,o);op.value=o;if(d[key]===o)op.selected=true;inp.appendChild(op);}); }
+    else if(type==="textarea"){ inp=el("textarea"); inp.rows=2; inp.value=d[key]||""; }
+    else { inp=el("input"); inp.type=type||"text"; inp.value=d[key]; if(type==="number"){inp.min="0";inp.step="0.01";} }
+    inp.addEventListener("input",function(){ d[key]=inp.value; });
+    inp.addEventListener("change",function(){ d[key]=inp.value; });
+    w.appendChild(inp); return w;
+  }
+
+  var f=el("div","fset");
+  f.appendChild(campo("Importo (€)","importo","number"));
+  f.appendChild(campo("Data","data","date"));
+  f.appendChild(campo("Categoria","categoria","select",CATEGORIE));
+  body.appendChild(f);
+
+  var mot=el("div");
+  mot.appendChild(campo("Motivo (obbligatorio)","motivo"));
+  mot.appendChild(el("p","note",pre
+    ? "Scrivi a cosa servono i soldi: lo leggono anche gli altri due. Es. «200 tag nuove dal fornitore»."
+    : "Da dove arrivano i soldi. Es. «rimborso di Michele per le tag anticipate»."));
+  body.appendChild(mot);
+
+  var s5=el("div","sect");
+  s5.appendChild(campo("Note (facoltative)","note","textarea"));
+  body.appendChild(s5);
+
+  var disp=el("p","note");
+  disp.textContent="Nel fondo ci sono "+euro.format(saldoCassa())+".";
+  body.appendChild(disp);
+
+  var act=el("div","actions sect");
+  var save=el("button","btn",pre?"Registra prelievo":"Registra versamento");
+  save.onclick=function(){
+    var imp=Number(d.importo);
+    if(!(imp>0)){ toast("Inserisci un importo maggiore di zero"); return; }
+    if(String(d.motivo).trim().length<3){ toast("Il motivo è obbligatorio"); return; }
+    if(pre && imp>saldoCassa() && !save.dataset.ok){
+      save.dataset.ok="1"; save.textContent="Supera il fondo — premi ancora"; return;
+    }
+    save.disabled=true; save.textContent="Registro…";
+    salvaMovimento(d).then(function(ok){ if(ok) chiudi(); else { save.disabled=false; save.textContent="Riprova"; } });
+  };
+  act.appendChild(save);
+  body.appendChild(act);
+
+  scrim.appendChild(sheet);
+  scrim.addEventListener("click",function(e){ if(e.target===scrim) chiudi(); });
+  document.addEventListener("keydown",onEsc);
+  function onEsc(e){ if(e.key==="Escape") chiudi(); }
+  function chiudi(){ document.removeEventListener("keydown",onEsc); scrim.remove(); }
+  document.body.appendChild(scrim);
+  setTimeout(function(){ var i=sheet.querySelector("input"); if(i) i.focus(); },60);
+}
+
 /* ===================== team ===================== */
 function renderTeam(main){
   var grid=el("div","grid3");
@@ -582,6 +753,7 @@ function renderTeam(main){
     var box=el("div"); box.style.marginTop="10px";
     [["Locali seguiti",s.locali],["Tag in prova",s.tagProva],["Vendite chiuse",s.vendite],
      ["Tag venduti",s.tagVenduti],["Incassato",euro.format(s.inc)],["Da incassare",euro.format(s.da)],
+     ["Prelevato dal fondo",euro.format(totMov("prelievo",p.id))],
      ["Conversione",s.locali?Math.round(s.vendite/s.locali*100)+"%":"—"]].forEach(function(r){
       var k=el("div","kv"); k.appendChild(el("span","k",r[0])); k.appendChild(el("span","v",String(r[1]))); box.appendChild(k);
     });
@@ -771,6 +943,7 @@ function renderBody(){
   var main=$("#main"); main.innerHTML="";
   if(view==="lista") renderLista(main);
   else if(view==="mappa") renderMappa(main);
+  else if(view==="cassa") renderCassa(main);
   else renderTeam(main);
 }
 function render(){
